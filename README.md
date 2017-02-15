@@ -1,4 +1,4 @@
-# BDPA
+# BDPA Homeworks
 Big Data Processing &amp; Analytics course repository
 
 ## Assignment 0
