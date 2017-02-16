@@ -51,7 +51,7 @@ public class StopWords{
 		public void map(LongWritable key, Text value, Context context)
 				throws IOException, InterruptedException {
 			String line = value.toString().toLowerCase();
-			StringTokenizer tokenizer = new StringTokenizer(line, " \t\n\r\f,.:;?![]{}\"'()~_-");
+			StringTokenizer tokenizer = new StringTokenizer(line, " \t\n\r\f,.:;?![]{}'\"()&<>~_-12345677890#$*^%/@\\`=+|");
 			while (tokenizer.hasMoreTokens()) {
 				word.set(tokenizer.nextToken());
 				context.write(word, ONE);
@@ -59,16 +59,16 @@ public class StopWords{
 		}
 	}
 
-//	public static class Combiner extends Reducer<Text,IntWritable, Text,IntWritable> {
-//		@Override
-//		public void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
-//			int sum = 0;
-//			for (IntWritable val : values) {
-//				sum += val.get();
-//			}
-//			context.write(key, new IntWritable(sum));
-//		}
-//	}
+	// public static class Combiner extends Reducer<Text,IntWritable, Text,IntWritable> {
+	// 	@Override
+	// 	public void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
+	// 		int sum = 0;
+	// 		for (IntWritable val : values) {
+	// 			sum += val.get();
+	// 		}
+	// 		context.write(key, new IntWritable(sum));
+	// 	}
+	// }
 
 	public static class Reduce extends Reducer<Text, IntWritable, Text, NullWritable> {
 		@Override

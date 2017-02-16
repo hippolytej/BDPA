@@ -58,8 +58,6 @@ public class InvertedIndex{
 		br.write("Unique words in a single file = " + counter.getValue());
 		br.close();
 		hdfs.close();
-
-		System.out.println("Unique words in a single file = " + counter.getValue());
 	}
 
 
