@@ -1,7 +1,12 @@
 package invertedindex;
 
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.net.URI;
+import java.util.HashMap;
 import java.util.Scanner;
 import java.util.StringTokenizer;
 
@@ -15,6 +20,7 @@ import org.apache.hadoop.mapreduce.lib.input.FileSplit;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
+import org.apache.hadoop.util.Progressable;
 
 public class InvertedIndex{
 	static enum CustomCounters {UNIQUEWORDS}
@@ -23,14 +29,14 @@ public class InvertedIndex{
 
 		Job job = new Job(conf, "InvertedIndex");
 		job.setJarByClass(InvertedIndex.class);
-		
+
 		job.setOutputKeyClass(Text.class);
 		job.setOutputValueClass(Text.class);
 
 		job.setMapperClass(Map.class);
 		job.setCombinerClass(Combiner.class);
 		job.setReducerClass(Reduce.class);
-//		job.setNumReduceTasks(10);
+		job.setNumReduceTasks(10);
 
 		job.setInputFormatClass(TextInputFormat.class);
 		job.setOutputFormatClass(TextOutputFormat.class);
@@ -38,13 +44,23 @@ public class InvertedIndex{
 		FileInputFormat.setInputPaths(job, new Path(args[0]));
 		FileOutputFormat.setOutputPath(job, new Path(args[1]));
 
-//		conf.set("mapreduce.map.output.compress", "true");
-//		conf.set("mapreduce.map.output.compress.codec", "org.apache.hadoop.io.compress.SnappyCodec");
-	
-		
+		conf.set("mapreduce.map.output.compress", "true");
+		conf.set("mapreduce.map.output.compress.codec", "org.apache.hadoop.io.compress.SnappyCodec");
+
+
 		job.waitForCompletion(true);
 		Counter counter = job.getCounters().findCounter(CustomCounters.UNIQUEWORDS);
-		System.out.println("Unique words in a single file counter = " + counter.getValue());
+
+		FileSystem hdfs = FileSystem.get(URI.create("count"), conf);
+		Path file = new Path("counter.txt");
+		if ( hdfs.exists( file )) { hdfs.delete( file, true ); }
+		OutputStream os = hdfs.create(file);
+		BufferedWriter br = new BufferedWriter( new OutputStreamWriter( os, "UTF-8" ) );
+		br.write("Unique words in a single file = " + counter.getValue());
+		br.close();
+		hdfs.close();
+
+		System.out.println("Unique words in a single file = " + counter.getValue());
 	}
 
 
@@ -70,111 +86,94 @@ public class InvertedIndex{
 	public static class Combiner extends Reducer<Text,Text, Text,Text> {
 		@Override
 		public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
-			long s = 0;
-			long t = 0;
-			long a = 0;
+			HashMap<String, Integer> countDooku = new HashMap<String, Integer>();
+
 			for (Text val : values) {
-				
-				if (val.toString().equals("pg100.txt")){
-					s=s+1;
-				}
-				else if (val.toString().equals("pg31100.txt")){
-					t=t+1;
-				}
-				else if (val.toString().equals("pg3200.txt")){
-					a=a+1;
+				if(countDooku.containsKey(val.toString())){
+					countDooku.put(val.toString(), countDooku.get(val.toString()) + 1);
+				}else{
+					countDooku.put(val.toString(), 1);
 				}
 			}
+
 			String filesFrequency = new String();
-			if (s>0){
-				filesFrequency = filesFrequency + "pg100.txt#" + String.valueOf(s)+",";
+			for (String fileName: countDooku.keySet()){
+				String freq = countDooku.get(fileName).toString();
+				filesFrequency = filesFrequency + fileName + "#" + freq + ",";
 			}
-			if (t>0){
-				filesFrequency = filesFrequency + "pg31100.txt#" + String.valueOf(t)+",";
-			}
-			if (a>0){
-				filesFrequency = filesFrequency + "pg3200.txt#" + String.valueOf(a)+",";
-			}
-			Text documentList = new Text();
-			documentList.set(filesFrequency.toString());
-			context.write(key, documentList);
+
+			filesFrequency =  filesFrequency.substring(0, filesFrequency.length()-1);
+
+			Text index = new Text();
+			index.set(filesFrequency.toString());
+			context.write(key, index);
 		}
 	}
 
 	public static class Reduce extends Reducer<Text, Text, Text, Text> {
+
+		String stopwords = new String();
+
+		public void setup(Context context) throws IOException, InterruptedException {
+//		Check if key is a stop word	-----------------------
+
+//			Test with local file for standalone mode
+//			File file = new File("stopwords.csv");
+//			Scanner sw = new Scanner(file);
+
+
+//		With DHFS file
+			Path pt=new Path("stopwords.csv");
+	        FileSystem fs = FileSystem.get(new Configuration());
+	        Scanner sw=new Scanner(fs.open(pt));
+
+			while (sw.hasNext()){
+				stopwords = stopwords + " " + sw.next().toString();
+			}
+			sw.close();
+
+
+		}
+
 		@Override
 		public void reduce(Text key, Iterable<Text> values, Context context)
 				throws IOException, InterruptedException {
 
-//			Check if key is a stop word	-----------------------		
-			
-//			Test with local file for standalone mode
-			File file = new File("stopwords.csv");
-			Scanner sw = new Scanner(file);
-			
-//			With DHFS file
-//            Path pt=new Path("stopwords.csv");
-//            FileSystem fs = FileSystem.get(new Configuration());
-//            Scanner sw=new Scanner(fs.open(pt));
-			
-			Boolean isSW = false;
-			while (sw.hasNext()){
-				if (sw.next().toString().equals(key.toString())) {
-					isSW = true;
-					break;
-				}
-			}
-			sw.close();
-			
+
 //			Create index and count frequencies ---------------
-			
-			if (!isSW){
-				
-				
-				
-				long fs = 0;
-				long ft = 0;
-				long fa = 0;
+
+			if (!stopwords.contains(key.toString())){
+
+				HashMap<String, Integer> countDooku = new HashMap<String, Integer>();
+
 				for (Text val : values) {
-			        for (String token: val.toString().split(",")) {
-			        	String[] couple = token.split("#");
-						if (couple[0].equals("pg100.txt")){
-							fs = fs + Long.valueOf(couple[1]).longValue();
+					for (String token: val.toString().split(",")) {
+						String[] couple = token.split("#");
+						if(countDooku.containsKey(couple[0])){
+							countDooku.put(couple[0], countDooku.get(couple[0]) + Integer.parseInt(couple[1]));
 						}
-						else if (couple[0].equals("pg31100.txt")){
-							ft = ft + Long.valueOf(couple[1]).longValue();
-						}
-						else if (couple[0].equals("pg3200.txt")){
-							fa = fa + Long.valueOf(couple[1]).longValue();
+						else{
+							countDooku.put(couple[0], Integer.parseInt(couple[1]));
 						}
 					}
 				}
-				
+
 				String finalFilesFrequency = new String();
-				if (fs>0){
-					finalFilesFrequency = finalFilesFrequency + "pg100.txt#" + String.valueOf(fs)+", ";
+				for (String fileName: countDooku.keySet()){
+					String freq = countDooku.get(fileName).toString();
+					finalFilesFrequency = finalFilesFrequency + fileName + "#" + freq + ", ";
 				}
-				if (ft>0){
-					finalFilesFrequency = finalFilesFrequency + "pg31100.txt#" + String.valueOf(ft)+", ";
-				}
-				if (fa>0){
-					finalFilesFrequency = finalFilesFrequency + "pg3200.txt#" + String.valueOf(fa)+", ";
-				}
-				
 
 				finalFilesFrequency =  finalFilesFrequency.substring(0, finalFilesFrequency.length()-2);
 
-				
+				Text finalIndex = new Text();
+				finalIndex.set(finalFilesFrequency);
+				context.write(key, finalIndex);
+
 //				Here comes the counter...
 				if (!finalFilesFrequency.contains(",")){
 					context.getCounter(CustomCounters.UNIQUEWORDS).increment(1);
 				}
-				
-//				Now back to the good part
-				
-				Text documentList = new Text();
-				documentList.set(finalFilesFrequency);
-				context.write(key, documentList);
 			}
 		}
 	}
