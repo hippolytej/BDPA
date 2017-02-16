@@ -1,9 +1,0 @@
-hadoop fs -put workspace/StopWords/input
-
-hadoop jar StopWords10R.jar stopwords.StopWords input outputSW10R
-hadoop fs -cat outputSW10R/part\* | hadoop fs -put - stopwords.csv
-hadoop fs -get stropwords.csv
-
-hadoop jar InvertedIndex.jar invertedindex.InvertedIndex input outputII
-hadoop fs -cat outputII/part\* | hadoop fs -put - invertedindex.txt
-hadoop fs -get invertedindex.txt
